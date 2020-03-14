@@ -12,7 +12,7 @@ from ckan.common import _, request, c, response
 from botocore.exceptions import ClientError
 
 from ckanext.s3filestore.uploader import S3Uploader
-import webob
+from ckanext.s3filestore.helpers import generate_temporary_link
 
 import logging
 log = logging.getLogger(__name__)
@@ -63,10 +63,11 @@ class S3Controller(base.BaseController):
                 # We are using redirect to minio's resource public URL
                 s3 = upload.get_s3_session()
                 client = s3.client(service_name='s3', endpoint_url=host_name)
-                url = client.generate_presigned_url(ClientMethod='get_object',
-                                                    Params={'Bucket': bucket.name,
-                                                            'Key': key_path},
-                                                    ExpiresIn=60)
+                # url = client.generate_presigned_url(ClientMethod='get_object',
+                #                                     Params={'Bucket': bucket.name,
+                #                                             'Key': key_path},
+                #                                     ExpiresIn=60)
+                url = generate_temporary_link(client, bucket.name, key_path)
                 redirect(url)
 
             except ClientError as ex:
