@@ -1,6 +1,9 @@
 import os
+import os.path as path
 import mimetypes
 import paste.fileapp
+import hashlib
+import requests
 from ckantoolkit import config
 
 import ckantoolkit as toolkit
@@ -26,6 +29,8 @@ redirect = toolkit.redirect_to
 
 class S3Controller(base.BaseController):
 
+    datasets_for_download_with_cache = None
+
     def resource_download(self, id, resource_id, filename=None):
         '''
         Provide a download by either redirecting the user to the url stored or
@@ -36,7 +41,7 @@ class S3Controller(base.BaseController):
 
         try:
             rsc = get_action('resource_show')(context, {'id': resource_id})
-            get_action('package_show')(context, {'id': id})
+            dataset_dict = get_action('package_show')(context, {'id': id})
         except NotFound:
             abort(404, _('Resource not found'))
         except NotAuthorized:
@@ -68,7 +73,10 @@ class S3Controller(base.BaseController):
                 #                                             'Key': key_path},
                 #                                     ExpiresIn=60)
                 url = generate_temporary_link(client, bucket.name, key_path)
-                redirect(url)
+                if self._should_use_download_with_cache(dataset_dict['name']):
+                    return self._resource_download_with_cache(url, filename, rsc)
+                else:
+                    redirect(url)
 
             except ClientError as ex:
                 if ex.response['Error']['Code'] == 'NoSuchKey':
@@ -146,3 +154,47 @@ class S3Controller(base.BaseController):
                           filepath=filepath,
                           host_name=host_name)
         redirect(redirect_url)
+
+    def _should_use_download_with_cache(self, dataset_name):
+        if not self.datasets_for_download_with_cache:
+            datasets_str = config.get('hdx.download_with_cache.datasets')
+            if datasets_str:
+                self.datasets_for_download_with_cache = datasets_str.split(',')
+        if self.datasets_for_download_with_cache and dataset_name in self.datasets_for_download_with_cache:
+            return True
+        return False
+
+    def _compute_cached_filename(self, original_filename, resource_dict):
+        id = resource_dict['id']
+        last_modified = resource_dict.get('last_modified', '')
+        name = hashlib.sha1(id + last_modified).hexdigest()
+        parts = original_filename.split('.')[:]
+        parts[0] = name
+        filename = '.'.join(parts)
+        return filename
+
+    def _resource_download_with_cache(self, url, original_filename, resource_dict):
+        folder = config.get('hdx.download_with_cache.folder', '/tmp/')
+        if not folder.endswith('/'):
+            folder += '/'
+        if not path.exists(folder):
+            os.makedirs(folder)
+        filename = self._compute_cached_filename(original_filename, resource_dict)
+        full_file_path = folder + filename
+
+        if not path.exists(full_file_path):
+            r = requests.get(url)
+            with open(full_file_path, 'wb') as f:
+                f.write(r.content)
+
+        fileapp = paste.fileapp.FileApp(full_file_path)
+        try:
+            status, headers, app_iter = request.call_application(fileapp)
+            response.headers.update(dict(headers))
+            content_type, content_enc = mimetypes.guess_type(full_file_path)
+            if content_type:
+                response.headers['Content-Type'] = content_type
+            response.status = status
+            return app_iter
+        except OSError:
+            abort(404, _('Resource data not found'))
