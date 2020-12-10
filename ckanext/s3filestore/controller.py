@@ -156,11 +156,12 @@ class S3Controller(base.BaseController):
         redirect(redirect_url)
 
     def _should_use_download_with_cache(self, dataset_name):
-        if not self.datasets_for_download_with_cache:
+        if not S3Controller.datasets_for_download_with_cache:
             datasets_str = config.get('hdx.download_with_cache.datasets')
             if datasets_str:
-                self.datasets_for_download_with_cache = datasets_str.split(',')
-        if self.datasets_for_download_with_cache and dataset_name in self.datasets_for_download_with_cache:
+                S3Controller.datasets_for_download_with_cache = datasets_str.split(',')
+        if S3Controller.datasets_for_download_with_cache \
+                and dataset_name in S3Controller.datasets_for_download_with_cache:
             return True
         return False
 
