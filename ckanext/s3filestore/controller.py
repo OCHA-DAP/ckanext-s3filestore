@@ -15,7 +15,7 @@ from ckan.common import _, request, c, response
 from botocore.exceptions import ClientError
 
 from ckanext.s3filestore.uploader import S3Uploader
-from ckanext.s3filestore.helpers import generate_temporary_link
+from ckanext.s3filestore.helpers import generate_temporary_link, CachedDownloadStorageHelper
 
 import logging
 log = logging.getLogger(__name__)
@@ -174,22 +174,21 @@ class S3Controller(base.BaseController):
         filename = '.'.join(parts)
         return filename
 
+    def _get_cached_download_storage_helper(self, filename, url):
+        return CachedDownloadStorageHelper(filename, url)
+
     def _resource_download_with_cache(self, url, original_filename, resource_dict):
-        folder = config.get('hdx.download_with_cache.folder', '/tmp/')
-        if not folder.endswith('/'):
-            folder += '/'
-        if not path.exists(folder):
-            os.makedirs(folder)
         filename = self._compute_cached_filename(original_filename, resource_dict)
-        full_file_path = folder + filename
 
-        if not path.exists(full_file_path):
-            r = requests.get(url)
-            with open(full_file_path, 'wb') as f:
-                f.write(r.content)
+        storage_helper = self._get_cached_download_storage_helper(filename, url)
+        storage_helper.create_folder_if_needed()
+        storage_helper.download_file_if_needed()
 
-        fileapp = paste.fileapp.FileApp(full_file_path)
+        return self._prepare_cached_response(storage_helper.full_file_path)
+
+    def _prepare_cached_response(self, full_file_path):
         try:
+            fileapp = paste.fileapp.FileApp(full_file_path)
             status, headers, app_iter = request.call_application(fileapp)
             response.headers.update(dict(headers))
             content_type, content_enc = mimetypes.guess_type(full_file_path)
@@ -197,5 +196,7 @@ class S3Controller(base.BaseController):
                 response.headers['Content-Type'] = content_type
             response.status = status
             return app_iter
+
         except OSError:
-            abort(404, _('Resource data not found'))
+           abort(404, _('Resource data not found'))
+

@@ -1,3 +1,7 @@
+import os
+import os.path
+import requests
+
 from ckantoolkit import config
 
 
@@ -11,3 +15,36 @@ def generate_temporary_link(client, bucket_name, key_path, expires_in=None):
                                         ExpiresIn=expires_in)
 
     return url
+
+
+class CachedDownloadStorageHelper(object):
+    def __init__(self, filename, url):
+        self.folder = config.get('hdx.download_with_cache.folder', '/tmp/')
+        if not self.folder.endswith('/'):
+            self.folder += '/'
+
+        self.filename = filename
+        self.full_file_path = self.folder + self.filename
+        self.url = url
+
+    def _folder_exists(self):
+        return os.path.exists(self.folder)
+
+    def _file_exists(self):
+        return os.path.exists(self.full_file_path)
+
+    def _create_folder(self):
+        os.makedirs(self.folder)
+
+    def _download_file(self):
+        r = requests.get(self.url)
+        with open(self.full_file_path, 'wb') as f:
+            f.write(r.content)
+
+    def create_folder_if_needed(self):
+        if not self._folder_exists():
+            self._create_folder()
+
+    def download_file_if_needed(self):
+        if not self._file_exists():
+            self._download_file()
