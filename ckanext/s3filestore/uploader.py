@@ -250,7 +250,7 @@ class S3ResourceUploader(BaseS3Uploader):
             resource['url'] = self.filename
             resource['url_type'] = 'upload'
             resource['last_modified'] = datetime.datetime.utcnow()
-            self.mimetype = resource.get('mimetype')
+            self.mimetype = resource.get('mimetype') if not self.filename.lower().endswith('csv') else 'text/csv'
             if not self.mimetype:
                 try:
                     self.mimetype = resource['mimetype'] = mimetypes.guess_type(self.filename, strict=False)[0]
