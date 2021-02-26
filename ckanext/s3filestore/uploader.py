@@ -295,3 +295,14 @@ class S3ResourceUploader(BaseS3Uploader):
         if self.clear and self.old_filename:
             filepath = self.get_path(id, self.old_filename)
             self.clear_key(filepath)
+
+    @property
+    def filesize(self):
+        if self.upload_file:
+            try:
+                self.upload_file.seek(0,2)
+                size = self.upload_file.tell()
+                return size
+            except Exception as ex:
+                log.error(ex)
+        return 0
