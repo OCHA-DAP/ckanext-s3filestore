@@ -298,7 +298,7 @@ class S3ResourceUploader(BaseS3Uploader):
 
     @property
     def filesize(self):
-        if self.upload_file:
+        if hasattr(self, 'upload_file'):
             try:
                 self.upload_file.seek(0,2)
                 size = self.upload_file.tell()
