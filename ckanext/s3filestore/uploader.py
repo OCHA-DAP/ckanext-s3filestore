@@ -6,11 +6,14 @@ import mimetypes
 
 import boto3
 import botocore
-import ckantoolkit as toolkit
 
+import ckantoolkit as toolkit
 
 import ckan.model as model
 import ckan.lib.munge as munge
+
+from six import text_type
+
 
 if toolkit.check_ckan_version(min_version='2.7.0'):
     from werkzeug.datastructures import FileStorage as FlaskFileStorage
@@ -103,8 +106,9 @@ class BaseS3Uploader(object):
 
         return bucket
 
-    def upload_to_key(self, filepath, upload_file, make_public=False):
+    def upload_to_key(self, filepath, upload_file, make_public=False, metadata=None):
         '''Uploads the `upload_file` to `filepath` on `self.bucket`.'''
+        metadata = {} if metadata is None else metadata
         upload_file.seek(0)
 
         session = boto3.session.Session(aws_access_key_id=self.p_key,
@@ -115,7 +119,8 @@ class BaseS3Uploader(object):
         try:
             s3.Object(self.bucket_name, filepath).put(
                 Body=upload_file.read(), ACL='public-read',
-                ContentType=getattr(self, 'mimetype', None))
+                ContentType=getattr(self, 'mimetype', None),
+                Metadata=metadata)
             log.info("Succesfully uploaded {0} to S3!".format(filepath))
         except Exception as e:
             log.error('Something went very very wrong for {0}'.format(str(e)))
@@ -244,9 +249,12 @@ class S3ResourceUploader(BaseS3Uploader):
         upload_field_storage = resource.pop('upload', None)
         self.clear = resource.pop('clear_upload', None)
 
+        self.qa_autoscan = None
+
         if isinstance(upload_field_storage, ALLOWED_UPLOAD_TYPES):
             self.filename = upload_field_storage.filename
             self.filename = munge.munge_filename(self.filename)
+            self.qa_autoscan = self._should_be_autoscanned(resource)
             resource['url'] = self.filename
             resource['url_type'] = 'upload'
             resource['last_modified'] = datetime.datetime.utcnow()
@@ -285,7 +293,10 @@ class S3ResourceUploader(BaseS3Uploader):
         # file to the appropriate key in the AWS bucket.
         if self.filename:
             filepath = self.get_path(id, self.filename)
-            self.upload_to_key(filepath, self.upload_file)
+            metadata = {}
+            if self.qa_autoscan:
+                metadata['autoscan'] = 'true'
+            self.upload_to_key(filepath, self.upload_file, metadata=metadata)
 
         # The resource form only sets self.clear (via the input clear_upload)
         # to True when an uploaded file is not replaced by another uploaded
@@ -295,6 +306,26 @@ class S3ResourceUploader(BaseS3Uploader):
         if self.clear and self.old_filename:
             filepath = self.get_path(id, self.old_filename)
             self.clear_key(filepath)
+
+    def _should_be_autoscanned(self, resource):
+        is_spreadsheet = False
+        is_human = False
+        parts = self.filename.lower().split('.')
+        if len(parts) > 0 and parts[-1] in ['csv', 'xls', 'xlsx']:
+            is_spreadsheet = True
+
+        try:
+            request = toolkit.request
+            if request.user_agent.browser and request.user_agent.platform:
+                is_human = True
+        except TypeError as e:
+            log.warning('An exception was thrown while trying to read request data. '
+                        'This is normal when running tests: ' + text_type(e) )
+
+        return is_human and is_spreadsheet
+
+
+
 
     @property
     def filesize(self):
