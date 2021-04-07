@@ -45,8 +45,9 @@ class TestConnection(toolkit.CkanCommand):
         S3_conn = boto.connect_s3(public_key, secret_key)
 
         # Check if bucket exists
-        bucket = S3_conn.lookup(bucket_name)
-        if bucket is None:
+        try:
+            bucket = S3_conn.get_bucket(bucket_name)
+        except boto.exception.S3ResponseError as err:
             print 'Bucket {0} does not exist, trying to create it...'.format(
                 bucket_name)
             try:
