@@ -104,7 +104,7 @@ class BaseS3Uploader(object):
                               config=botocore.client.Config(signature_version=self.signature))
         try:
             s3.Object(self.bucket_name, filepath).put(
-                Body=upload_file.read(), ACL='public-read',
+                Body=upload_file.read(),
                 ContentType=getattr(self, 'mimetype', None),
                 Metadata=metadata)
             log.info("Succesfully uploaded {0} to S3!".format(filepath))
