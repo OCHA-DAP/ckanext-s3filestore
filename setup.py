@@ -58,7 +58,7 @@ setup(
     # project is installed. For an analysis of "install_requires" vs pip's
     # requirements files see:
     # https://packaging.python.org/en/latest/technical.html#install-requires-vs-requirements-files
-    install_requires=['boto>=2.38.0'],
+    install_requires=['boto3==1.17.112'],
 
     # If there are data files included in your packages that need to be
     # installed, specify them here.  If using Python 2.6 or less, then these
@@ -79,8 +79,8 @@ setup(
     entry_points='''
         [ckan.plugins]
         s3filestore=ckanext.s3filestore.plugin:S3FileStorePlugin
-        [paste.paster_command]
-        s3=ckanext.s3filestore.commands:TestConnection
+        # [paste.paster_command]
+        # s3=ckanext.s3filestore.commands:TestConnection
 
     ''',
 )
