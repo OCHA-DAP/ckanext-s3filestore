@@ -1,15 +1,17 @@
 from routes.mapper import SubMapper
 import ckan.plugins as plugins
-import ckantoolkit as toolkit
+import ckan.plugins.toolkit as toolkit
 
 import ckanext.s3filestore.uploader
+from ckanext.s3filestore.view import s3filestore
 
 
 class S3FileStorePlugin(plugins.SingletonPlugin):
     plugins.implements(plugins.IConfigurer)
     plugins.implements(plugins.IConfigurable)
     plugins.implements(plugins.IUploader)
-    plugins.implements(plugins.IRoutes, inherit=True)
+    plugins.implements(plugins.IBlueprint)
+    # plugins.implements(plugins.IRoutes, inherit=True)
 
     # IConfigurer
 
@@ -54,23 +56,27 @@ class S3FileStorePlugin(plugins.SingletonPlugin):
 
     # IRoutes
 
-    def before_map(self, map):
-        with SubMapper(map, controller='ckanext.s3filestore.controller:S3Controller') as m:
+    # def before_map(self, map):
+    #     with SubMapper(map, controller='ckanext.s3filestore.controller:S3Controller') as m:
             # Override the resource download links
-            m.connect('resource_download',
-                      '/dataset/{id}/resource/{resource_id}/download',
-                      action='resource_download')
-            m.connect('resource_download',
-                      '/dataset/{id}/resource/{resource_id}/download/{filename}',
-                      action='resource_download')
+            # m.connect('resource_download',
+            #           '/dataset/{id}/resource/{resource_id}/download',
+            #           action='resource_download')
+            # m.connect('resource_download',
+            #           '/dataset/{id}/resource/{resource_id}/download/{filename}',
+            #           action='resource_download')
 
             # fallback controller action to download from the filesystem
-            m.connect('filesystem_resource_download',
-                      '/dataset/{id}/resource/{resource_id}/fs_download/{filename}',
-                      action='filesystem_resource_download')
+            # m.connect('filesystem_resource_download',
+            #           '/dataset/{id}/resource/{resource_id}/fs_download/{filename}',
+            #           action='filesystem_resource_download')
 
             # Intercept the uploaded file links (e.g. group images)
-            m.connect('uploaded_file', '/uploads/{upload_to}/{filename}',
-                      action='uploaded_file_redirect')
+            # m.connect('uploaded_file', '/uploads/{upload_to}/{filename}',
+            #           action='uploaded_file_redirect')
 
-        return map
+        # return map
+
+    # IBlueprint
+    def get_blueprint(self):
+        return s3filestore
