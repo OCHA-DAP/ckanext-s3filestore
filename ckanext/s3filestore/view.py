@@ -174,7 +174,8 @@ def _should_use_download_with_cache(dataset_name):
 def _compute_cached_filename(original_filename, resource_dict):
     id = resource_dict['id']
     last_modified = resource_dict.get('last_modified', '')
-    name = hashlib.sha1(id + last_modified).hexdigest()
+    key = (id + last_modified).encode('utf-8')
+    name = hashlib.sha1(key).hexdigest()
     parts = original_filename.split('.')[:]
     parts[0] = name
     filename = '.'.join(parts)
