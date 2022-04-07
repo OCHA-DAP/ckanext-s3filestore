@@ -304,7 +304,7 @@ class S3ResourceUploader(BaseS3Uploader):
             request = toolkit.request
             if request.user_agent.browser and request.user_agent.platform:
                 is_human = True
-        except TypeError as e:
+        except (TypeError, RuntimeError) as e:
             log.warning('An exception was thrown while trying to read request data. '
                         'This is normal when running tests: ' + text_type(e) )
 
