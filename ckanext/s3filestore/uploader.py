@@ -105,7 +105,7 @@ class BaseS3Uploader(object):
         try:
             s3.Object(self.bucket_name, filepath).put(
                 Body=upload_file.read(),
-                ContentType=getattr(self, 'mimetype', 'application/octet-stream'),
+                ContentType=getattr(self, 'mimetype', 'application/octet-stream') or 'application/octet-stream',
                 Metadata=metadata)
             log.info("Succesfully uploaded {0} to S3!".format(filepath))
         except Exception as e:
