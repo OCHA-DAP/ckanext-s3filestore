@@ -1,4 +1,4 @@
-from routes.mapper import SubMapper
+# from routes.mapper import SubMapper
 import ckan.plugins as plugins
 import ckan.plugins.toolkit as toolkit
 
