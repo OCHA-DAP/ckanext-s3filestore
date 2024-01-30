@@ -98,6 +98,9 @@ def download(id, resource_id, filename=None):
                 return abort(404, _('Resource data not found'))
             else:
                 raise ex
+    elif u'url' not in rsc:
+        return abort(404, _(u'No download is available'))
+    return redirect(rsc[u'url'])
 
 
 def filesystem_resource_download(id, resource_id, filename=None):
