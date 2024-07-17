@@ -5,7 +5,7 @@ import requests
 from ckantoolkit import config
 
 
-def generate_temporary_link(client, bucket_name, key_path, expires_in=None):
+def generate_temporary_link(client, bucket_name, key_path, force_download=False, expires_in=None):
 
     if not expires_in:
         expires_in = config.get('ckanext.s3filestore.link_expires_in_seconds', 60)
@@ -15,7 +15,7 @@ def generate_temporary_link(client, bucket_name, key_path, expires_in=None):
         'Key': key_path,
     }
 
-    if key_path.endswith('.geojson') or key_path.endswith('.json'):
+    if force_download:
         filename = key_path.split('/')[-1]
         params['ResponseContentDisposition'] = f'attachment; filename="{filename}"'
 
