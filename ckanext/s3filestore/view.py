@@ -60,6 +60,8 @@ def download(id, resource_id, filename=None):
         key_path = upload.get_path(rsc['id'], filename)
         key = filename
 
+        force_download = rsc.get('format').lower() in ['geojson', 'json']
+
         if key is None:
             log.warn('Key \'{0}\' not found in bucket \'{1}\''
                      .format(key_path, bucket_name))
@@ -73,7 +75,7 @@ def download(id, resource_id, filename=None):
             #                                     Params={'Bucket': bucket.name,
             #                                             'Key': key_path},
             #                                     ExpiresIn=60)
-            url = generate_temporary_link(client, bucket.name, key_path)
+            url = generate_temporary_link(client, bucket.name, key_path, force_download)
             if _should_use_download_with_cache(dataset_dict['name']):
                 return _resource_download_with_cache(url, filename, rsc)
             else:
