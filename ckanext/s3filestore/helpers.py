@@ -5,7 +5,7 @@ import requests
 from ckantoolkit import config
 
 
-def generate_temporary_link(client, bucket_name, key_path, force_download=False, expires_in=None):
+def generate_temporary_link(client, bucket_name, key_path, force_download=False, expires_in=None, http_method=None):
 
     if not expires_in:
         expires_in = config.get('ckanext.s3filestore.link_expires_in_seconds', 60)
@@ -19,10 +19,16 @@ def generate_temporary_link(client, bucket_name, key_path, force_download=False,
         filename = key_path.split('/')[-1]
         params['ResponseContentDisposition'] = f'attachment; filename="{filename}"'
 
+    # Use the passed HTTP method or default to GET
+    kwargs = {}
+    if http_method:
+        kwargs['HttpMethod'] = http_method
+
     url = client.generate_presigned_url(
         ClientMethod='get_object',
         Params=params,
-        ExpiresIn=expires_in
+        ExpiresIn=expires_in,
+        **kwargs
     )
 
     return url
