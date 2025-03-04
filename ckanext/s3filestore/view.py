@@ -76,7 +76,6 @@ def download(id, resource_id, filename=None):
             #                                             'Key': key_path},
             #                                     ExpiresIn=60)
             http_method = request.method  # Get the current HTTP method
-            log.info(f"Request HTTP method: {http_method}")
             url = generate_temporary_link(client, bucket.name, key_path, force_download, None, http_method)
             if _should_use_download_with_cache(dataset_dict['name']):
                 return _resource_download_with_cache(url, filename, rsc)
