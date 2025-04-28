@@ -302,8 +302,19 @@ class S3ResourceUploader(BaseS3Uploader):
 
         try:
             request = toolkit.request
-            if request.user_agent.browser and request.user_agent.platform:
+            browser = request.user_agent.browser
+            platform = request.user_agent.platform
+            if not browser and not platform:
+                # only when running pytests
+                import ua_parser.user_agent_parser as useragent
+                parsed_ua = useragent.Parse(request.user_agent.string)
+                browser = parsed_ua.get('user_agent', {}).get('family', '')
+                browser = browser if browser != 'Other' else None
+                platform = parsed_ua.get('os', {}).get('family', '')
+                platform = platform if platform != 'Other' else None
+            if browser and platform:
                 is_human = True
+
         except (TypeError, RuntimeError) as e:
             log.warning('An exception was thrown while trying to read request data. '
                         'This is normal when running tests: ' + text_type(e) )
