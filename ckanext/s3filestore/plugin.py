@@ -11,6 +11,7 @@ class S3FileStorePlugin(plugins.SingletonPlugin):
     plugins.implements(plugins.IConfigurable)
     plugins.implements(plugins.IUploader)
     plugins.implements(plugins.IBlueprint)
+    plugins.implements(plugins.IConfigDeclaration)
     # plugins.implements(plugins.IRoutes, inherit=True)
 
     # IConfigurer
@@ -18,21 +19,56 @@ class S3FileStorePlugin(plugins.SingletonPlugin):
     def update_config(self, config_):
         toolkit.add_template_directory(config_, 'templates')
 
+    # IConfigDeclaration
+
+    def declare_config_options(self, declaration, key):
+        # Only declare the new AssumeRole configuration options
+        # Other options are already declared by CKAN's blanket plugin
+        # declaration.declare(key.ckanext.s3filestore.aws_bucket_name)
+        # declaration.declare(key.ckanext.s3filestore.aws_access_key_id)
+        # declaration.declare(key.ckanext.s3filestore.aws_secret_access_key)
+        # declaration.declare(key.ckanext.s3filestore.region_name)
+        # declaration.declare(key.ckanext.s3filestore.signature_version)
+        # declaration.declare(key.ckanext.s3filestore.host_name)
+        # declaration.declare(key.ckanext.s3filestore.aws_storage_path)
+        # declaration.declare(key.ckanext.s3filestore.check_access_on_startup)
+        # declaration.declare(key.ckanext.s3filestore.filesystem_download_fallback)
+        # declaration.declare(key.ckanext.s3filestore.link_expires_in_seconds)
+        # AssumeRole configuration
+        declaration.declare(key.ckanext.s3filestore.aws_use_assume_role, False)
+        declaration.declare(key.ckanext.s3filestore.aws_role_arn)
+        declaration.declare(key.ckanext.s3filestore.aws_role_session_name, 'ckan-s3filestore-session')
+
     # IConfigurable
 
     def configure(self, config):
         # Certain config options must exists for the plugin to work. Raise an
         # exception if they're missing.
         missing_config = "{0} is not configured. Please amend your .ini file."
-        config_options = (
-            'ckanext.s3filestore.aws_access_key_id',
-            'ckanext.s3filestore.aws_secret_access_key',
+
+        # Check if using AssumeRole mode
+        use_assume_role = toolkit.asbool(config.get('ckanext.s3filestore.aws_use_assume_role', False))
+
+        # Always required options
+        required_options = (
             'ckanext.s3filestore.aws_bucket_name',
             'ckanext.s3filestore.region_name',
             'ckanext.s3filestore.signature_version',
             'ckanext.s3filestore.host_name'
         )
-        for option in config_options:
+
+        # If NOT using AssumeRole, also require access keys
+        if not use_assume_role:
+            required_options += (
+                'ckanext.s3filestore.aws_access_key_id',
+                'ckanext.s3filestore.aws_secret_access_key',
+            )
+        else:
+            # If using AssumeRole, require role ARN
+            if not config.get('ckanext.s3filestore.aws_role_arn'):
+                raise RuntimeError('ckanext.s3filestore.aws_role_arn is required when aws_use_assume_role is true')
+
+        for option in required_options:
             if not config.get(option, None):
                 raise RuntimeError(missing_config.format(option))
 

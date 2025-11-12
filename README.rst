@@ -59,12 +59,21 @@ Config Settings
 
 Required::
 
-    ckanext.s3filestore.aws_access_key_id = Your-Access-Key-ID
-    ckanext.s3filestore.aws_secret_access_key = Your-Secret-Access-Key
     ckanext.s3filestore.aws_bucket_name = a-bucket-to-store-your-stuff
-    ckanext.s3filestore.host_name = host-to-S3-cloud storage 
+    ckanext.s3filestore.host_name = host-to-S3-cloud storage
     ckanext.s3filestore.region_name= region-name
     ckanext.s3filestore.signature_version = signature (s3v4)
+
+    # Authentication: Either use explicit credentials OR AssumeRole (see below)
+    # Option 1: Explicit credentials
+    ckanext.s3filestore.aws_access_key_id = Your-Access-Key-ID
+    ckanext.s3filestore.aws_secret_access_key = Your-Secret-Access-Key
+
+    # Option 2: AssumeRole (for EC2 instances with IAM roles)
+    ckanext.s3filestore.aws_use_assume_role = true
+    # You can specify either the full ARN or just the role name
+    ckanext.s3filestore.aws_role_arn = YourRoleName
+    # OR: ckanext.s3filestore.aws_role_arn = arn:aws:iam::123456789012:role/YourRoleName
 
 Optional::
 
@@ -75,6 +84,50 @@ Optional::
     ckanext.s3filestore.filesystem_download_fallback = true
     # The ckan storage path option must also be set correctly for the fallback to work
     ckan.storage_path = path/to/storage/directory
+
+    # Optional session name for AssumeRole (defaults to 'ckan-s3filestore-session')
+    ckanext.s3filestore.aws_role_session_name = ckan-s3filestore-session
+
+
+----------------------------------
+AWS Authentication Methods
+----------------------------------
+
+This extension supports two authentication methods:
+
+**Method 1: Explicit AWS Credentials**
+
+Use this method when you have AWS access keys::
+
+    ckanext.s3filestore.aws_access_key_id = Your-Access-Key-ID
+    ckanext.s3filestore.aws_secret_access_key = Your-Secret-Access-Key
+
+**Method 2: AssumeRole (EC2 Instance Profile)**
+
+Use this method when running CKAN on an EC2 instance with an IAM role attached.
+This is ideal for containerized deployments where you don't want to store credentials
+in the container.
+
+Prerequisites:
+- EC2 instance must have an IAM role attached
+- The IAM role must have permissions to assume the target role
+- The target role must trust the EC2 instance role
+
+Configuration::
+
+    ckanext.s3filestore.aws_use_assume_role = true
+    # You can use just the role name (recommended)
+    ckanext.s3filestore.aws_role_arn = YourS3AccessRole
+    # Or the full ARN
+    # ckanext.s3filestore.aws_role_arn = arn:aws:iam::123456789012:role/YourS3AccessRole
+
+With this configuration, the extension will:
+1. Use the EC2 instance profile credentials automatically
+2. Assume the specified role to get temporary credentials
+3. Use those temporary credentials to access S3
+
+Note: When aws_use_assume_role is set to true, aws_access_key_id and aws_secret_access_key
+are ignored even if they are set.
 
 
 ------------------------
