@@ -48,6 +48,21 @@ class BaseS3Uploader(object):
         self.region = config.get('ckanext.s3filestore.region_name')
         self.signature = config.get('ckanext.s3filestore.signature_version')
         self.host_name = config.get('ckanext.s3filestore.host_name')
+        # Assume role configuration
+        self.use_assume_role = toolkit.asbool(config.get('ckanext.s3filestore.aws_use_assume_role', False))
+        self.role_arn = config.get('ckanext.s3filestore.aws_role_arn')
+        self.role_session_name = config.get('ckanext.s3filestore.aws_role_session_name', 'ckan-s3filestore-session')
+
+        # If using AssumeRole, remove AWS credentials from environment to force boto3
+        # to use instance profile credentials
+        if self.use_assume_role and self.role_arn:
+            if 'AWS_ACCESS_KEY_ID' in os.environ:
+                del os.environ['AWS_ACCESS_KEY_ID']
+                log.info('Removed AWS_ACCESS_KEY_ID from environment for AssumeRole')
+            if 'AWS_SECRET_ACCESS_KEY' in os.environ:
+                del os.environ['AWS_SECRET_ACCESS_KEY']
+                log.info('Removed AWS_SECRET_ACCESS_KEY from environment for AssumeRole')
+
         self.bucket = self.get_s3_bucket(self.bucket_name)
 
     def get_directory(self, id, storage_path):
@@ -55,9 +70,62 @@ class BaseS3Uploader(object):
         return directory
 
     def get_s3_session(self):
-        return boto3.session.Session(aws_access_key_id=self.p_key,
-                                     aws_secret_access_key=self.s_key,
-                                     region_name=self.region)
+        """
+        Create and return a boto3 session.
+
+        Two modes of operation:
+        1. AssumeRole mode (when use_assume_role is True and role_arn is provided):
+           - Uses EC2 instance profile credentials to assume the specified role
+           - No explicit AWS keys needed - relies on EC2 instance IAM role
+           - Supports both full ARN or just role name (will auto-construct ARN)
+        2. Standard mode (default):
+           - Uses explicit AWS access key and secret key from config
+        """
+        if self.use_assume_role and self.role_arn:
+            log.info('S3 Authentication: Using AssumeRole mode')
+            # Create a base session without explicit credentials
+            # This will automatically use the EC2 instance profile credentials
+            base_session = boto3.session.Session(region_name=self.region)
+
+            # Use STS to assume the role
+            sts_client = base_session.client('sts')
+
+            # Check if role_arn is a full ARN or just a role name
+            if self.role_arn.startswith('arn:aws:iam::'):
+                # Full ARN provided
+                role_arn = self.role_arn
+            else:
+                # Just role name provided - construct the ARN
+                # Get the account ID from the current identity
+                account_id = sts_client.get_caller_identity()['Account']
+                role_arn = 'arn:aws:iam::{0}:role/{1}'.format(account_id, self.role_arn)
+                # log.info('Constructed role ARN: {0}'.format(role_arn))
+
+            # log.info('Using AssumeRole authentication with role: {0}'.format(role_arn))
+
+            assumed_role = sts_client.assume_role(
+                RoleArn=role_arn,
+                RoleSessionName=self.role_session_name
+            )
+
+            # Extract temporary credentials
+            credentials = assumed_role['Credentials']
+
+            # Create a new session with the temporary credentials
+            return boto3.session.Session(
+                aws_access_key_id=credentials['AccessKeyId'],
+                aws_secret_access_key=credentials['SecretAccessKey'],
+                aws_session_token=credentials['SessionToken'],
+                region_name=self.region
+            )
+        else:
+            # Use standard credentials with explicit keys
+            log.info('S3 Authentication: Using explicit credentials mode (access key)')
+            return boto3.session.Session(
+                aws_access_key_id=self.p_key,
+                aws_secret_access_key=self.s_key,
+                region_name=self.region
+            )
 
     def get_s3_bucket(self, bucket_name):
         '''Return a boto bucket, creating it if it doesn't exist.'''
@@ -97,9 +165,7 @@ class BaseS3Uploader(object):
         metadata = {} if metadata is None else metadata
         upload_file.seek(0)
 
-        session = boto3.session.Session(aws_access_key_id=self.p_key,
-                                        aws_secret_access_key=self.s_key,
-                                        region_name=self.region)
+        session = self.get_s3_session()
         s3 = session.resource('s3', endpoint_url=self.host_name,
                               config=botocore.client.Config(signature_version=self.signature))
         try:
@@ -114,9 +180,7 @@ class BaseS3Uploader(object):
 
     def clear_key(self, filepath):
         '''Deletes the contents of the key at `filepath` on `self.bucket`.'''
-        session = boto3.session.Session(aws_access_key_id=self.p_key,
-                                    aws_secret_access_key=self.s_key,
-                                    region_name=self.region)
+        session = self.get_s3_session()
         s3 = session.resource('s3', endpoint_url=self.host_name, config=botocore.client.Config(
                              signature_version=self.signature))
         try:
