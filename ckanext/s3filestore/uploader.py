@@ -3,6 +3,8 @@ import cgi
 import logging
 import datetime
 import mimetypes
+from datetime import datetime as dt, timedelta, timezone
+from typing import Dict, Any, Optional
 
 import boto3
 import botocore
@@ -13,6 +15,8 @@ import ckan.model as model
 import ckan.lib.munge as munge
 
 from six import text_type
+
+from ckanext.s3filestore.caching import get_fresh_s3_credentials, S3AssumeRoleException
 
 
 if toolkit.check_ckan_version(min_version='2.7.0'):
@@ -63,7 +67,10 @@ class BaseS3Uploader(object):
                 del os.environ['AWS_SECRET_ACCESS_KEY']
                 log.info('Removed AWS_SECRET_ACCESS_KEY from environment for AssumeRole')
 
-        self.bucket = self.get_s3_bucket(self.bucket_name)
+        # Note: We don't cache self.bucket here to avoid credential expiration issues
+        # with AssumeRole temporary credentials. Each operation (upload_to_key, clear_key)
+        # creates a fresh S3 session via get_s3_session(), ensuring credentials are always valid.
+        # Bucket validation at startup is handled by plugin.py configure() method.
 
     def get_directory(self, id, storage_path):
         directory = os.path.join(storage_path, id)
@@ -75,44 +82,37 @@ class BaseS3Uploader(object):
 
         Two modes of operation:
         1. AssumeRole mode (when use_assume_role is True and role_arn is provided):
-           - Uses EC2 instance profile credentials to assume the specified role
-           - No explicit AWS keys needed - relies on EC2 instance IAM role
-           - Supports both full ARN or just role name (will auto-construct ARN)
+           - Uses cached_load_s3filestore_credentials() for Redis-cached credentials
+           - Lazy refresh: dogpile automatically reuses valid credentials from Redis
+           - Multi-process safe: all nginx unit processes share the same Redis cache
+           - No locks needed: dogpile handles concurrent access with distributed locks
         2. Standard mode (default):
            - Uses explicit AWS access key and secret key from config
         """
         if self.use_assume_role and self.role_arn:
-            log.info('S3 Authentication: Using AssumeRole mode')
-            # Create a base session without explicit credentials
-            # This will automatically use the EC2 instance profile credentials
-            base_session = boto3.session.Session(region_name=self.region)
+            log.info('S3 Authentication: Using AssumeRole mode with Redis-cached credentials')
 
-            # Use STS to assume the role
-            sts_client = base_session.client('sts')
+            # Load credentials from cache (Redis) or create new ones if expired
+            # get_fresh_s3_credentials() validates expiration and auto-refreshes if needed
+            log.info('Getting S3 credentials...')
+            try:
+                credentials = get_fresh_s3_credentials()
+                # Mask AccessKeyId - show only first 2 and last 2 chars
+                access_key = credentials.get('AccessKeyId', 'None')
+                if access_key != 'None' and len(access_key) > 4:
+                    masked_key = '{0}..{1}'.format(access_key[:2], access_key[-2:])
+                else:
+                    masked_key = access_key
+                log.info('Received credentials - AccessKeyId: {0}, Expiration: {1}'.format(
+                    masked_key,
+                    credentials.get('Expiration', 'None')
+                ))
+            except Exception as e:
+                log.error('Failed to load credentials: {0}'.format(str(e)), exc_info=True)
+                raise
 
-            # Check if role_arn is a full ARN or just a role name
-            if self.role_arn.startswith('arn:aws:iam::'):
-                # Full ARN provided
-                role_arn = self.role_arn
-            else:
-                # Just role name provided - construct the ARN
-                # Get the account ID from the current identity
-                account_id = sts_client.get_caller_identity()['Account']
-                role_arn = 'arn:aws:iam::{0}:role/{1}'.format(account_id, self.role_arn)
-                # log.info('Constructed role ARN: {0}'.format(role_arn))
-
-            # log.info('Using AssumeRole authentication with role: {0}'.format(role_arn))
-
-            assumed_role = sts_client.assume_role(
-                RoleArn=role_arn,
-                RoleSessionName=self.role_session_name
-            )
-
-            # Extract temporary credentials
-            credentials = assumed_role['Credentials']
-
-            # Create a new session with the temporary credentials
-            return boto3.session.Session(
+            # Create session with cached credentials
+            return boto3.Session(
                 aws_access_key_id=credentials['AccessKeyId'],
                 aws_secret_access_key=credentials['SecretAccessKey'],
                 aws_session_token=credentials['SessionToken'],
@@ -121,7 +121,7 @@ class BaseS3Uploader(object):
         else:
             # Use standard credentials with explicit keys
             log.info('S3 Authentication: Using explicit credentials mode (access key)')
-            return boto3.session.Session(
+            return boto3.Session(
                 aws_access_key_id=self.p_key,
                 aws_secret_access_key=self.s_key,
                 region_name=self.region
