@@ -19,9 +19,10 @@ from ckanext.s3filestore.caching import get_fresh_s3_credentials, cached_load_s3
 @pytest.fixture(autouse=True)
 def clear_cache():
     """Clear dogpile cache before and after each test."""
-    dogpile_aws_region.invalidate()
+    # Invalidate the specific cached function, not the entire region
+    cached_load_s3filestore_credentials.invalidate()
     yield
-    dogpile_aws_region.invalidate()
+    cached_load_s3filestore_credentials.invalidate()
 
 
 @mock.patch('ckanext.s3filestore.caching.role_name_or_arn', 'arn:aws:iam::123456789012:role/TestRole')
