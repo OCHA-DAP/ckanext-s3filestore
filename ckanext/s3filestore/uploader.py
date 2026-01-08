@@ -3,8 +3,6 @@ import cgi
 import logging
 import datetime
 import mimetypes
-from datetime import datetime as dt, timedelta, timezone
-from typing import Dict, Any, Optional
 
 import boto3
 import botocore
@@ -16,7 +14,7 @@ import ckan.lib.munge as munge
 
 from six import text_type
 
-from ckanext.s3filestore.caching import get_fresh_s3_credentials, S3AssumeRoleException
+from ckanext.s3filestore.caching import get_fresh_s3_credentials
 
 
 if toolkit.check_ckan_version(min_version='2.7.0'):
