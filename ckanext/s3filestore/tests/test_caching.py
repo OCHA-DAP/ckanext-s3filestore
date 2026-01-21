@@ -13,7 +13,7 @@ from unittest import mock
 
 import pytest
 
-from ckanext.s3filestore.caching import get_fresh_s3_credentials, cached_load_s3filestore_credentials, S3AssumeRoleException
+from ckanext.s3filestore.caching import cached_load_s3filestore_credentials, S3AssumeRoleException
 
 
 @pytest.fixture(autouse=True)
@@ -271,110 +271,3 @@ def test_caching_behavior(mock_session_class, mock_fetcher_class, mock_provider_
     assert mock_sts.assume_role.call_count == 1
 
 
-@mock.patch('ckanext.s3filestore.caching.role_name_or_arn', 'arn:aws:iam::123456789012:role/TestRole')
-@mock.patch('ckanext.s3filestore.caching.region', 'us-east-1')
-@mock.patch('ckanext.s3filestore.caching.session_name', 'test-session')
-@mock.patch('ckanext.s3filestore.caching.InstanceMetadataProvider')
-@mock.patch('ckanext.s3filestore.caching.InstanceMetadataFetcher')
-@mock.patch('ckanext.s3filestore.caching.boto3.Session')
-def test_get_fresh_s3_credentials_auto_refresh_on_expiry(mock_session_class, mock_fetcher_class, mock_provider_class):
-    """Test that get_fresh_s3_credentials() auto-refreshes when credentials expire soon."""
-    # Mock instance metadata credentials
-    mock_creds = mock.Mock()
-    mock_creds.access_key = 'MOCK_ACCESS_KEY'
-    mock_creds.secret_key = 'MOCK_SECRET_KEY'
-    mock_creds.token = 'MOCK_TOKEN'
-
-    mock_provider = mock.Mock()
-    mock_provider.load.return_value = mock_creds
-    mock_provider_class.return_value = mock_provider
-
-    # Mock STS client - first call returns credentials expiring in 3 minutes
-    expiration_time_old = datetime.now(timezone.utc) + timedelta(minutes=3)
-    expiration_time_new = datetime.now(timezone.utc) + timedelta(hours=1)
-
-    call_count = [0]
-    def mock_assume_role(**kwargs):
-        call_count[0] += 1
-        if call_count[0] == 1:
-            # First call - credentials expiring in 3 minutes
-            return {
-                'Credentials': {
-                    'AccessKeyId': 'OLD_KEY',
-                    'SecretAccessKey': 'OLD_SECRET',
-                    'SessionToken': 'OLD_TOKEN',
-                    'Expiration': expiration_time_old
-                }
-            }
-        else:
-            # Second call - fresh credentials expiring in 60 minutes
-            return {
-                'Credentials': {
-                    'AccessKeyId': 'NEW_KEY',
-                    'SecretAccessKey': 'NEW_SECRET',
-                    'SessionToken': 'NEW_TOKEN',
-                    'Expiration': expiration_time_new
-                }
-            }
-
-    mock_sts = mock.Mock()
-    mock_sts.assume_role = mock_assume_role
-
-    mock_session = mock.Mock()
-    mock_session.client.return_value = mock_sts
-    mock_session_class.return_value = mock_session
-
-    # First call - should get credentials expiring in 3 minutes
-    credentials = get_fresh_s3_credentials()
-
-    # Should have invalidated cache and refreshed (expiring in <5 min)
-    assert credentials['AccessKeyId'] == 'NEW_KEY'
-    assert mock_sts.assume_role.call_count == 2  # Called twice (initial + refresh)
-
-
-@mock.patch('ckanext.s3filestore.caching.role_name_or_arn', 'arn:aws:iam::123456789012:role/TestRole')
-@mock.patch('ckanext.s3filestore.caching.region', 'us-east-1')
-@mock.patch('ckanext.s3filestore.caching.session_name', 'test-session')
-@mock.patch('ckanext.s3filestore.caching.InstanceMetadataProvider')
-@mock.patch('ckanext.s3filestore.caching.InstanceMetadataFetcher')
-@mock.patch('ckanext.s3filestore.caching.boto3.Session')
-def test_get_fresh_s3_credentials_uses_cache_when_valid(mock_session_class, mock_fetcher_class, mock_provider_class):
-    """Test that get_fresh_s3_credentials() returns cached credentials when >5 min valid."""
-    # Mock instance metadata credentials
-    mock_creds = mock.Mock()
-    mock_creds.access_key = 'MOCK_ACCESS_KEY'
-    mock_creds.secret_key = 'MOCK_SECRET_KEY'
-    mock_creds.token = 'MOCK_TOKEN'
-
-    mock_provider = mock.Mock()
-    mock_provider.load.return_value = mock_creds
-    mock_provider_class.return_value = mock_provider
-
-    # Mock STS client - returns credentials valid for 30 minutes
-    expiration_time = datetime.now(timezone.utc) + timedelta(minutes=30)
-    mock_sts = mock.Mock()
-    mock_sts.assume_role.return_value = {
-        'Credentials': {
-            'AccessKeyId': 'CACHED_KEY',
-            'SecretAccessKey': 'CACHED_SECRET',
-            'SessionToken': 'CACHED_TOKEN',
-            'Expiration': expiration_time
-        }
-    }
-
-    mock_session = mock.Mock()
-    mock_session.client.return_value = mock_sts
-    mock_session_class.return_value = mock_session
-
-    # First call - should generate credentials
-    credentials1 = get_fresh_s3_credentials()
-    assert credentials1['AccessKeyId'] == 'CACHED_KEY'
-    assert mock_sts.assume_role.call_count == 1
-
-    # Second call - should use cached credentials (>5 min valid, no refresh)
-    credentials2 = get_fresh_s3_credentials()
-    assert credentials2['AccessKeyId'] == 'CACHED_KEY'
-    assert mock_sts.assume_role.call_count == 1  # Still 1 (not called again)
-
-    # Verify same credentials returned
-    assert credentials1 == credentials2

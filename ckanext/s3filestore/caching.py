@@ -40,56 +40,6 @@ class S3AssumeRoleException(Exception):
     pass
 
 
-def get_fresh_s3_credentials():
-    """
-    Get valid S3 credentials from cache or regenerate if expired/expiring.
-
-    This function provides automatic credential refresh with a safety buffer:
-    - First attempts to retrieve cached credentials from Redis
-    - Validates expiration time has >5 minutes remaining
-    - If expiring soon (<5 min), invalidates cache and generates fresh credentials
-    - If valid (>5 min), returns cached credentials without AWS API call
-
-    The 5-minute buffer ensures credentials remain valid during request processing,
-    preventing race conditions where credentials expire mid-request.
-
-    Flow:
-    1. Call cached_load_s3filestore_credentials() (returns from cache if available)
-    2. Check expiration time
-    3. If <5 min remaining: invalidate cache + regenerate
-    4. If >5 min remaining: return cached credentials
-    5. Return valid credentials
-
-    :return: Dict with keys: AccessKeyId, SecretAccessKey, SessionToken, Expiration
-    :rtype: dict
-    :raises S3AssumeRoleException: If credential loading/validation fails
-    """
-
-    # Get credentials (from cache or fresh)
-    credentials = cached_load_s3filestore_credentials()
-
-    # Check if credentials are still valid
-    if credentials.get('Expiration'):
-        expiration = credentials['Expiration']
-        if expiration.tzinfo is None:
-            expiration = expiration.replace(tzinfo=timezone.utc)
-
-        now = datetime.now(timezone.utc)
-        time_until_expiry = expiration - now
-        minutes_until_expiry = int(time_until_expiry.total_seconds() / 60)
-
-        # If expiring in less than 5 minutes, invalidate cache and get fresh ones
-        if time_until_expiry.total_seconds() < 300:  # 5 minutes
-            log.warning('Credentials expiring in {0} minutes, invalidating cache and refreshing...'.format(
-                minutes_until_expiry))
-            cached_load_s3filestore_credentials.invalidate()
-            credentials = cached_load_s3filestore_credentials()
-        else:
-            log.debug('Using cached credentials, valid for {0} more minutes'.format(minutes_until_expiry))
-
-    return credentials
-
-
 @dogpile_aws_region.cache_on_arguments()
 def cached_load_s3filestore_credentials():
     """

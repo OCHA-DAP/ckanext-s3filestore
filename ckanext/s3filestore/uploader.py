@@ -14,7 +14,7 @@ import ckan.lib.munge as munge
 
 from six import text_type
 
-from ckanext.s3filestore.caching import get_fresh_s3_credentials
+from ckanext.s3filestore.caching import cached_load_s3filestore_credentials
 
 
 if toolkit.check_ckan_version(min_version='2.7.0'):
@@ -90,18 +90,17 @@ class BaseS3Uploader(object):
         if self.use_assume_role and self.role_arn:
             log.info('S3 Authentication: Using AssumeRole mode with Redis-cached credentials')
 
-            # Load credentials from cache (Redis) or create new ones if expired
-            # get_fresh_s3_credentials() validates expiration and auto-refreshes if needed
-            log.info('Getting S3 credentials...')
+            # Load credentials from cache (Redis) or create new ones if cache expired
+            # Dogpile automatically handles cache TTL and regeneration
             try:
-                credentials = get_fresh_s3_credentials()
+                credentials = cached_load_s3filestore_credentials()
                 # Mask AccessKeyId - show only first 2 and last 2 chars
                 access_key = credentials.get('AccessKeyId', 'None')
                 if access_key != 'None' and len(access_key) > 4:
                     masked_key = '{0}..{1}'.format(access_key[:2], access_key[-2:])
                 else:
                     masked_key = access_key
-                log.info('Received credentials - AccessKeyId: {0}, Expiration: {1}'.format(
+                log.info('Using credentials - AccessKeyId: {0}, Expiration: {1}'.format(
                     masked_key,
                     credentials.get('Expiration', 'None')
                 ))
