@@ -54,7 +54,8 @@ class CachedDownloadStorageHelper(object):
         os.makedirs(self.folder)
 
     def _download_file(self):
-        r = requests.get(self.url)
+        r = requests.get(self.url, timeout=30)
+        r.raise_for_status()
         with open(self.full_file_path, 'wb') as f:
             f.write(r.content)
 
