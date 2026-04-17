@@ -14,7 +14,8 @@ import ckan.lib.munge as munge
 
 from six import text_type
 
-from ckanext.s3filestore.caching import cached_load_s3filestore_credentials
+from ckanext.s3filestore.caching import get_cached_s3_credentials
+from ckanext.hdx_theme.helpers.aws_credentials import AwsAssumeRoleException
 
 
 if toolkit.check_ckan_version(min_version='2.7.0'):
@@ -80,7 +81,7 @@ class BaseS3Uploader(object):
 
         Two modes of operation:
         1. AssumeRole mode (when use_assume_role is True and role_arn is provided):
-           - Uses cached_load_s3filestore_credentials() for Redis-cached credentials
+           - Uses get_cached_s3_credentials() for Redis-cached credentials
            - Lazy refresh: dogpile automatically reuses valid credentials from Redis
            - Multi-process safe: all nginx unit processes share the same Redis cache
            - No locks needed: dogpile handles concurrent access with distributed locks
@@ -93,16 +94,15 @@ class BaseS3Uploader(object):
             # Load credentials from cache (Redis) or create new ones if cache expired
             # Dogpile automatically handles cache TTL and regeneration
             try:
-                credentials = cached_load_s3filestore_credentials()
-                # Mask AccessKeyId - show only first 2 and last 2 chars
-                access_key = credentials.get('AccessKeyId', 'None')
+                credentials = get_cached_s3_credentials()
+                access_key = credentials.get('access_key', 'None')
                 if access_key != 'None' and len(access_key) > 4:
                     masked_key = '{0}..{1}'.format(access_key[:2], access_key[-2:])
                 else:
                     masked_key = access_key
-                log.info('Using credentials - AccessKeyId: {0}, Expiration: {1}'.format(
+                log.info('Using credentials - access_key: {0}, expiration: {1}'.format(
                     masked_key,
-                    credentials.get('Expiration', 'None')
+                    credentials.get('expiration', 'None')
                 ))
             except Exception as e:
                 log.error('Failed to load credentials: {0}'.format(str(e)), exc_info=True)
@@ -110,9 +110,9 @@ class BaseS3Uploader(object):
 
             # Create session with cached credentials
             return boto3.Session(
-                aws_access_key_id=credentials['AccessKeyId'],
-                aws_secret_access_key=credentials['SecretAccessKey'],
-                aws_session_token=credentials['SessionToken'],
+                aws_access_key_id=credentials['access_key'],
+                aws_secret_access_key=credentials['secret_key'],
+                aws_session_token=credentials['session_token'],
                 region_name=self.region
             )
         else:
